@@ -1,0 +1,12 @@
+[package]
+name = "que-mira-bobo"
+version = "0.1.0"
+edition = "2021"
+description = "Terminal tool"
+homepage = "https://github.com/nbittich/que-mira-bobo"
+license = "MPL-2.0"
+readme = "README.md"
+authors = ["Nordine Bittich"]
+
+
+[dependencies]
