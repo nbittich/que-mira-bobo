@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use tui::{
     backend::Backend,
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
     style::{Color, Modifier, Style},
     text::{Span, Spans},
     widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
@@ -21,15 +21,15 @@ pub fn draw_app<B: Backend>(frame: &mut Frame<B>, context: &SparqlContext) {
         .direction(Direction::Vertical)
         .constraints(
             [
-                Constraint::Percentage(10),
-                Constraint::Percentage(70),
+                Constraint::Percentage(8),
+                Constraint::Percentage(62),
                 Constraint::Percentage(30),
             ]
             .as_ref(),
         )
         .split(frame_size.clone());
 
-    let focus = cursor_focused(context, &chunks[0]);
+    let focus = cursor_focused(frame, context, &chunks[0]);
     let url_paragraph = draw_paragraph(&context.url, draw_block("Sparql endpoint", focus), focus);
 
     frame.render_widget(url_paragraph, chunks[0]);
@@ -37,19 +37,19 @@ pub fn draw_app<B: Backend>(frame: &mut Frame<B>, context: &SparqlContext) {
     let area_middle = split_rect(70, 30, Direction::Horizontal, chunks[1]);
     let area_left = area_middle[0];
 
-    let focus = cursor_focused(context, &area_left);
+    let focus = cursor_focused(frame, context, &area_left);
     let query_paragraph = draw_paragraph(&context.query, draw_block("Query", focus), focus);
 
     frame.render_widget(query_paragraph, area_left);
 
     let area_right = split_rect(50, 50, Direction::Vertical, area_middle[1]);
 
-    let focus = cursor_focused(context, &area_right[0]);
+    let focus = cursor_focused(frame, context, &area_right[0]);
     let prefixes_list = draw_list(&context.prefixes, draw_block("Prefixes", focus), focus);
 
     frame.render_widget(prefixes_list, area_right[0]);
 
-    let focus = cursor_focused(context, &area_right[1]);
+    let focus = cursor_focused(frame, context, &area_right[1]);
     let prefixes_list = draw_list(&context.saved_queries, draw_block("Queries", focus), focus);
 
     frame.render_widget(prefixes_list, area_right[1]);
@@ -125,12 +125,22 @@ fn draw_span(content: &str) -> Spans {
     ))
 }
 
-fn cursor_focused(context: &SparqlContext, rect: &Rect) -> bool {
+fn cursor_focused<B: Backend>(frame: &mut Frame<B>, context: &SparqlContext, rect: &Rect) -> bool {
+    let rect = rect.inner(&DEFAULT_MARGIN);
     let point = Rect {
         x: context.pos_cursor.1,
         y: context.pos_cursor.0,
         width: 1,
         height: 1,
     };
-    rect.intersects(point)
+    let is_focused = rect.intersects(point);
+    if is_focused {
+        frame.set_cursor(rect.x, rect.y);
+    }
+    is_focused
 }
+
+const DEFAULT_MARGIN: Margin = Margin {
+    vertical: 1,
+    horizontal: 1,
+};
