@@ -11,7 +11,7 @@ use crossterm::{
     },
 };
 use sparql_context::SparqlContext;
-use std::{error::Error, io};
+use std::{collections::BTreeMap, error::Error, io};
 use tui::{
     backend::{Backend, CrosstermBackend},
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -50,7 +50,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<()> {
-    let mut sparql_context = SparqlContext::default();
+    let mut sparql_context = mock_initial_sparql_context();
     loop {
         terminal.draw(|f| draw_app(f, &sparql_context))?;
 
@@ -78,4 +78,79 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<()> {
             Event::Resize(_, _) => {}
         }
     }
+}
+
+fn mock_initial_sparql_context() -> SparqlContext {
+    let mut sparql_context = SparqlContext::default();
+    sparql_context.url = "http://localhost:8093/sparql".into();
+    sparql_context.prefixes = BTreeMap::from([
+        ("xsd".into(), "http://www.w3.org/2001/XMLSchema#".into()),
+        ("mu".into(), "http://mu.semte.ch/vocabularies/core/".into()),
+        (
+            "persoon".into(),
+            "https://data.vlaanderen.be/ns/persoon#".into(),
+        ),
+        ("ext".into(), "http://mu.semte.ch/vocabularies/ext/".into()),
+        ("person".into(), "http://www.w3.org/ns/person#".into()),
+        (
+            "session".into(),
+            "http://mu.semte.ch/vocabularies/session/".into(),
+        ),
+        ("foaf".into(), "http://xmlns.com/foaf/0.1/".into()),
+        (
+            "besluit".into(),
+            "http://data.vlaanderen.be/ns/besluit#".into(),
+        ),
+        (
+            "ere".into(),
+            "http://data.lblod.info/vocabularies/erediensten/".into(),
+        ),
+        (
+            "mandaat".into(),
+            "http://data.vlaanderen.be/ns/mandaat#".into(),
+        ),
+        ("org".into(), "http://www.w3.org/ns/org".into()),
+        (
+            "generiek".into(),
+            "https://data.vlaanderen.be/ns/generiek#".into(),
+        ),
+    ]);
+    sparql_context.query = r#"PREFIX ext: <http://mu.semte.ch/vocabularies/ext/>
+    PREFIX person: <http://www.w3.org/ns/person#>
+    PREFIX session: <http://mu.semte.ch/vocabularies/session/>
+    PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+    PREFIX besluit: <http://data.vlaanderen.be/ns/besluit#>
+    PREFIX ere: <http://data.lblod.info/vocabularies/erediensten/>
+    PREFIX mandaat: <http://data.vlaanderen.be/ns/mandaat#>
+    PREFIX org: <http://www.w3.org/ns/org>
+    PREFIX generiek: <https://data.vlaanderen.be/ns/generiek#>
+
+
+    DELETE {
+      GRAPH <http://mu.semte.ch/graphs/organisatieportaal> {
+        ?governingBody ?p ?o.
+      }
+    }
+    INSERT {
+      GRAPH <http://mu.semte.ch/graphs/worship-service> {
+        ?governingBody ?p ?o.
+      }
+    }
+
+    WHERE {
+      GRAPH <http://mu.semte.ch/graphs/organisatieportaal> {
+        ?governingBody <http://data.lblod.info/vocabularies/erediensten/wordtBediendDoor>
+                       ?post; ?p ?o.
+
+        filter exists {
+          GRAPH <http://mu.semte.ch/graphs/worship-service> {
+            ?mandatories <http://www.w3.org/ns/org#holds> ?post.
+        
+          }
+        }
+      }
+   }
+"#
+    .into();
+    sparql_context
 }
