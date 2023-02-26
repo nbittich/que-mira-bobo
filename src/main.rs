@@ -4,13 +4,13 @@ mod sparql_context;
 
 use app::draw_app;
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
     execute,
     terminal::{
         disable_raw_mode, enable_raw_mode, Clear, EnterAlternateScreen, LeaveAlternateScreen,
     },
 };
-use sparql_context::SparqlContext;
+use sparql_context::{Mode, SparqlContext};
 use std::{collections::BTreeMap, error::Error, io};
 use tui::{
     backend::{Backend, CrosstermBackend},
@@ -52,11 +52,19 @@ fn main() -> Result<(), Box<dyn Error>> {
 fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<()> {
     let mut sparql_context = mock_initial_sparql_context();
     loop {
-        terminal.draw(|f| draw_app(f, &sparql_context))?;
+        terminal.draw(|f| draw_app(f, &mut sparql_context))?;
 
         match event::read()? {
             Event::Key(key) => match key.code {
-                KeyCode::Char('q') => return Ok(()),
+                KeyCode::Char('q') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    return Ok(())
+                }
+                KeyCode::Char(c) => match &sparql_context.mode {
+                    Some(Mode::Url) => sparql_context.url.push(c),
+                    Some(Mode::Query) => sparql_context.query.push(c),
+                    _ => {}
+                },
+
                 _ => {}
             },
             Event::Mouse(m) => match m.kind {

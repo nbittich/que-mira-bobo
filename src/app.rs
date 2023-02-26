@@ -11,12 +11,9 @@ use tui::{
 
 use crate::sparql_context::{self, Mode, SparqlContext};
 
-pub fn draw_app<B: Backend>(frame: &mut Frame<B>, context: &SparqlContext) {
+pub fn draw_app<B: Backend>(frame: &mut Frame<B>, context: &mut SparqlContext) {
     let frame_size = frame.size();
-    let current_mode = match context.mode {
-        Some(mode) => mode.clone(),
-        None => Mode::Url,
-    };
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints(
@@ -28,31 +25,35 @@ pub fn draw_app<B: Backend>(frame: &mut Frame<B>, context: &SparqlContext) {
             .as_ref(),
         )
         .split(frame_size.clone());
-
-    let focus = cursor_focused(frame, context, &chunks[0]);
-    let url_paragraph = draw_paragraph(&context.url, draw_block("Sparql endpoint", focus), focus);
-
-    frame.render_widget(url_paragraph, chunks[0]);
-
     let area_middle = split_rect(70, 30, Direction::Horizontal, chunks[1]);
-    let area_left = area_middle[0];
-
-    let focus = cursor_focused(frame, context, &area_left);
-    let query_paragraph = draw_paragraph(&context.query, draw_block("Query", focus), focus);
-
-    frame.render_widget(query_paragraph, area_left);
 
     let area_right = split_rect(50, 50, Direction::Vertical, area_middle[1]);
 
-    let focus = cursor_focused(frame, context, &area_right[0]);
+    let sparql_fragment = chunks[0];
+
+    let query_fragment = area_middle[0];
+
+    let prefixes_fragment = area_right[0];
+    let saved_queries_fragement = area_right[1];
+
+    let focus = cursor_focused(frame, context, Mode::Url, &sparql_fragment);
+    let url_paragraph = draw_paragraph(&context.url, draw_block("Sparql endpoint", focus), focus);
+
+    frame.render_widget(url_paragraph, sparql_fragment);
+    let focus = cursor_focused(frame, context, Mode::Query, &query_fragment);
+    let query_paragraph = draw_paragraph(&context.query, draw_block("Query", focus), focus);
+
+    frame.render_widget(query_paragraph, query_fragment);
+
+    let focus = cursor_focused(frame, context, Mode::SavedPrefixes, &prefixes_fragment);
     let prefixes_list = draw_list(&context.prefixes, draw_block("Prefixes", focus), focus);
 
-    frame.render_widget(prefixes_list, area_right[0]);
+    frame.render_widget(prefixes_list, prefixes_fragment);
 
-    let focus = cursor_focused(frame, context, &area_right[1]);
-    let prefixes_list = draw_list(&context.saved_queries, draw_block("Queries", focus), focus);
+    let focus = cursor_focused(frame, context, Mode::SavedQueries, &saved_queries_fragement);
+    let query_list = draw_list(&context.saved_queries, draw_block("Queries", focus), focus);
 
-    frame.render_widget(prefixes_list, area_right[1]);
+    frame.render_widget(query_list, saved_queries_fragement);
 
     // DEBUG
     let message = format!(
@@ -63,7 +64,7 @@ pub fn draw_app<B: Backend>(frame: &mut Frame<B>, context: &SparqlContext) {
           queries: {:?}
 
         "#,
-        chunks[0], area_left, area_right[0], area_right[1]
+        chunks[0], query_fragment, prefixes_fragment, saved_queries_fragement
     );
     let debug = draw_paragraph(&message, draw_block("DEBUG", false), false);
     frame.render_widget(debug, chunks[2]);
@@ -125,7 +126,12 @@ fn draw_span(content: &str) -> Spans {
     ))
 }
 
-fn cursor_focused<B: Backend>(frame: &mut Frame<B>, context: &SparqlContext, rect: &Rect) -> bool {
+fn cursor_focused<B: Backend>(
+    frame: &mut Frame<B>,
+    context: &mut SparqlContext,
+    mode_if_focus: Mode,
+    rect: &Rect,
+) -> bool {
     let rect = rect.inner(&DEFAULT_MARGIN);
     let point = Rect {
         x: context.pos_cursor.1,
@@ -135,7 +141,8 @@ fn cursor_focused<B: Backend>(frame: &mut Frame<B>, context: &SparqlContext, rec
     };
     let is_focused = rect.intersects(point);
     if is_focused {
-        frame.set_cursor(rect.x, rect.y);
+        frame.set_cursor(point.x, point.y);
+        context.mode = Some(mode_if_focus);
     }
     is_focused
 }
