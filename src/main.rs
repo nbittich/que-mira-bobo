@@ -4,7 +4,9 @@ mod sparql_context;
 
 use app::draw_app;
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
+    event::{
+        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyModifiers,
+    },
     execute,
     terminal::{
         disable_raw_mode, enable_raw_mode, Clear, EnterAlternateScreen, LeaveAlternateScreen,
@@ -20,6 +22,7 @@ use tui::{
     widgets::{Block, Borders, List, Paragraph, Wrap},
     Frame, Terminal,
 };
+use tui_textarea::{Input, Key, TextArea};
 
 fn main() -> Result<(), Box<dyn Error>> {
     // setup terminal
@@ -55,18 +58,20 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<()> {
         terminal.draw(|f| draw_app(f, &mut sparql_context))?;
 
         match event::read()? {
-            Event::Key(key) => match key.code {
-                KeyCode::Char('q') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    return Ok(())
+            Event::Key(key) => {
+                if &key.code == &KeyCode::Char('q') && key.modifiers.contains(KeyModifiers::CONTROL)
+                {
+                    return Ok(());
                 }
-                KeyCode::Char(c) => match &sparql_context.mode {
-                    Some(Mode::Url) => sparql_context.url.push(c),
-                    Some(Mode::Query) => sparql_context.query.push(c),
-                    _ => {}
-                },
-
-                _ => {}
-            },
+                if matches!(sparql_context.mode, Some(Mode::Url)) {
+                    let textarea = &mut sparql_context.url;
+                    textarea.input(key);
+                }
+                if matches!(sparql_context.mode, Some(Mode::Query)) {
+                    let textarea = &mut sparql_context.query;
+                    textarea.input(key);
+                }
+            }
             Event::Mouse(m) => match m.kind {
                 event::MouseEventKind::Down(event::MouseButton::Left) => {
                     let row = m.row;
@@ -88,9 +93,9 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<()> {
     }
 }
 
-fn mock_initial_sparql_context() -> SparqlContext {
+fn mock_initial_sparql_context<'a>() -> SparqlContext<'a> {
     let mut sparql_context = SparqlContext::default();
-    sparql_context.url = "http://localhost:8093/sparql".into();
+    sparql_context.url = TextArea::from(["http://localhost:8093/sparql"]);
     sparql_context.prefixes = BTreeMap::from([
         ("xsd".into(), "http://www.w3.org/2001/XMLSchema#".into()),
         ("mu".into(), "http://mu.semte.ch/vocabularies/core/".into()),
@@ -123,7 +128,8 @@ fn mock_initial_sparql_context() -> SparqlContext {
             "https://data.vlaanderen.be/ns/generiek#".into(),
         ),
     ]);
-    sparql_context.query = r#"PREFIX ext: <http://mu.semte.ch/vocabularies/ext/>
+    sparql_context.query = TextArea::from(
+        r#"PREFIX ext: <http://mu.semte.ch/vocabularies/ext/>
     PREFIX person: <http://www.w3.org/ns/person#>
     PREFIX session: <http://mu.semte.ch/vocabularies/session/>
     PREFIX foaf: <http://xmlns.com/foaf/0.1/>
@@ -159,6 +165,7 @@ fn mock_initial_sparql_context() -> SparqlContext {
       }
    }
 "#
-    .into();
+        .lines(),
+    );
     sparql_context
 }

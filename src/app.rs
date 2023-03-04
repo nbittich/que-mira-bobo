@@ -8,6 +8,7 @@ use tui::{
     widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
     Frame,
 };
+use tui_textarea::TextArea;
 
 use crate::sparql_context::{self, Mode, SparqlContext};
 
@@ -37,13 +38,18 @@ pub fn draw_app<B: Backend>(frame: &mut Frame<B>, context: &mut SparqlContext) {
     let saved_queries_fragement = area_right[1];
 
     let focus = cursor_focused(frame, context, Mode::Url, &sparql_fragment);
-    let url_paragraph = draw_paragraph(&context.url, draw_block("Sparql endpoint", focus), focus);
 
-    frame.render_widget(url_paragraph, sparql_fragment);
+    draw_textarea(
+        &mut context.url,
+        draw_block("Sparql endpoint", focus),
+        focus,
+    );
+
+    frame.render_widget(context.url.widget(), sparql_fragment);
     let focus = cursor_focused(frame, context, Mode::Query, &query_fragment);
-    let query_paragraph = draw_paragraph(&context.query, draw_block("Query", focus), focus);
+    draw_textarea(&mut context.query, draw_block("Query", focus), focus);
 
-    frame.render_widget(query_paragraph, query_fragment);
+    frame.render_widget(context.query.widget(), query_fragment);
 
     let focus = cursor_focused(frame, context, Mode::SavedPrefixes, &prefixes_fragment);
     let prefixes_list = draw_list(&context.prefixes, draw_block("Prefixes", focus), focus);
@@ -69,7 +75,14 @@ pub fn draw_app<B: Backend>(frame: &mut Frame<B>, context: &mut SparqlContext) {
     let debug = draw_paragraph(&message, draw_block("DEBUG", false), false);
     frame.render_widget(debug, chunks[2]);
 }
-
+fn draw_textarea<'a>(textarea: &mut TextArea<'a>, block: Block<'a>, focus: bool) {
+    textarea.set_block(block);
+    if !focus {
+        textarea.set_cursor_style(textarea.style());
+    } else {
+        textarea.set_cursor_style(Style::default().bg(Color::White).fg(Color::Black));
+    }
+}
 fn draw_paragraph<'a>(content: &'a str, block: Block<'a>, focus: bool) -> Paragraph<'a> {
     Paragraph::new(content)
         .style(Style::default().bg(Color::Black).fg(Color::White))
@@ -141,7 +154,6 @@ fn cursor_focused<B: Backend>(
     };
     let is_focused = rect.intersects(point);
     if is_focused {
-        frame.set_cursor(point.x, point.y);
         context.mode = Some(mode_if_focus);
     }
     is_focused
