@@ -5,15 +5,17 @@ mod sparql_context;
 use app::draw_app;
 use crossterm::{
     event::{
-        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyModifiers,
+        self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+        Event, KeyCode, KeyEvent, KeyModifiers,
     },
     execute,
     terminal::{
         disable_raw_mode, enable_raw_mode, Clear, EnterAlternateScreen, LeaveAlternateScreen,
     },
 };
-use sparql_context::{Mode, SparqlContext};
-use std::{collections::BTreeMap, error::Error, io};
+use reqwest::{blocking, header::CONTENT_TYPE};
+use sparql_context::{Mode, SparqlContext, SparqlResponse};
+use std::{collections::BTreeMap, error::Error, io, time::Duration};
 use tui::{
     backend::{Backend, CrosstermBackend},
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -28,7 +30,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     // setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    execute!(
+        stdout,
+        EnterAlternateScreen,
+        EnableBracketedPaste,
+        EnableMouseCapture
+    )?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
@@ -39,10 +46,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     disable_raw_mode()?;
     execute!(
         terminal.backend_mut(),
+        Clear(crossterm::terminal::ClearType::Purge),
         LeaveAlternateScreen,
         Clear(crossterm::terminal::ClearType::All),
-        DisableMouseCapture
+        DisableMouseCapture,
+        DisableBracketedPaste
     )?;
+    terminal.clear()?;
     terminal.show_cursor()?;
 
     if let Err(err) = res {
@@ -56,16 +66,23 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<()> {
     let mut sparql_context = mock_initial_sparql_context();
     loop {
         terminal.draw(|f| draw_app(f, &mut sparql_context))?;
-
+        #[allow(clippy::single_match)]
+        match sparql_context.mode {
+            Some(Mode::Submit) => {
+                execute_query(&mut sparql_context);
+            }
+            _ => {}
+        }
         match event::read()? {
             Event::Key(key) => {
-                if &key.code == &KeyCode::Char('q') && key.modifiers.contains(KeyModifiers::CONTROL)
-                {
+                if key.code == KeyCode::Char('q') && key.modifiers.contains(KeyModifiers::CONTROL) {
                     return Ok(());
                 }
                 if matches!(sparql_context.mode, Some(Mode::Url)) {
                     let textarea = &mut sparql_context.url;
-                    textarea.input(key);
+                    if key.code != KeyCode::Enter {
+                        textarea.input(key);
+                    }
                 }
                 if matches!(sparql_context.mode, Some(Mode::Query)) {
                     let textarea = &mut sparql_context.query;
@@ -87,85 +104,58 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<()> {
             },
             Event::FocusGained => todo!(),
             Event::FocusLost => todo!(),
-            Event::Paste(_) => {}
+            Event::Paste(_) => todo!(),
             Event::Resize(_, _) => {}
         }
     }
 }
 
 fn mock_initial_sparql_context<'a>() -> SparqlContext<'a> {
-    let mut sparql_context = SparqlContext::default();
-    sparql_context.url = TextArea::from(["http://localhost:8093/sparql"]);
-    sparql_context.prefixes = BTreeMap::from([
-        ("xsd".into(), "http://www.w3.org/2001/XMLSchema#".into()),
-        ("mu".into(), "http://mu.semte.ch/vocabularies/core/".into()),
-        (
-            "persoon".into(),
-            "https://data.vlaanderen.be/ns/persoon#".into(),
-        ),
-        ("ext".into(), "http://mu.semte.ch/vocabularies/ext/".into()),
-        ("person".into(), "http://www.w3.org/ns/person#".into()),
-        (
-            "session".into(),
-            "http://mu.semte.ch/vocabularies/session/".into(),
-        ),
-        ("foaf".into(), "http://xmlns.com/foaf/0.1/".into()),
-        (
-            "besluit".into(),
-            "http://data.vlaanderen.be/ns/besluit#".into(),
-        ),
-        (
-            "ere".into(),
-            "http://data.lblod.info/vocabularies/erediensten/".into(),
-        ),
-        (
-            "mandaat".into(),
-            "http://data.vlaanderen.be/ns/mandaat#".into(),
-        ),
-        ("org".into(), "http://www.w3.org/ns/org".into()),
-        (
-            "generiek".into(),
-            "https://data.vlaanderen.be/ns/generiek#".into(),
-        ),
-    ]);
-    sparql_context.query = TextArea::from(
-        r#"PREFIX ext: <http://mu.semte.ch/vocabularies/ext/>
-    PREFIX person: <http://www.w3.org/ns/person#>
-    PREFIX session: <http://mu.semte.ch/vocabularies/session/>
-    PREFIX foaf: <http://xmlns.com/foaf/0.1/>
-    PREFIX besluit: <http://data.vlaanderen.be/ns/besluit#>
-    PREFIX ere: <http://data.lblod.info/vocabularies/erediensten/>
-    PREFIX mandaat: <http://data.vlaanderen.be/ns/mandaat#>
-    PREFIX org: <http://www.w3.org/ns/org>
-    PREFIX generiek: <https://data.vlaanderen.be/ns/generiek#>
+    SparqlContext::<'_> {
+        url: TextArea::from(["http://localhost:8890/sparql"]),
+        query: TextArea::from(
+            r#"PREFIX ext: <http://mu.semte.ch/vocabularies/ext/>
+      PREFIX person: <http://www.w3.org/ns/person#>
+      PREFIX session: <http://mu.semte.ch/vocabularies/session/>
+      PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+      PREFIX besluit: <http://data.vlaanderen.be/ns/besluit#>
+      PREFIX ere: <http://data.lblod.info/vocabularies/erediensten/>
+      PREFIX mandaat: <http://data.vlaanderen.be/ns/mandaat#>
+      PREFIX org: <http://www.w3.org/ns/org>
+      PREFIX generiek: <https://data.vlaanderen.be/ns/generiek#>
 
-
-    DELETE {
-      GRAPH <http://mu.semte.ch/graphs/organisatieportaal> {
-        ?governingBody ?p ?o.
-      }
-    }
-    INSERT {
-      GRAPH <http://mu.semte.ch/graphs/worship-service> {
-        ?governingBody ?p ?o.
-      }
-    }
-
-    WHERE {
-      GRAPH <http://mu.semte.ch/graphs/organisatieportaal> {
-        ?governingBody <http://data.lblod.info/vocabularies/erediensten/wordtBediendDoor>
-                       ?post; ?p ?o.
-
-        filter exists {
-          GRAPH <http://mu.semte.ch/graphs/worship-service> {
-            ?mandatories <http://www.w3.org/ns/org#holds> ?post.
-        
+      select * where {
+          graph ?g {
+              ?s ?p ?o
           }
-        }
-      }
-   }
-"#
-        .lines(),
-    );
-    sparql_context
+      } limit 1
+
+      "#
+            .lines(),
+        ),
+        ..Default::default()
+    }
+}
+
+fn execute_query(context: &mut SparqlContext) {
+    let uri = context.url.lines()[0].trim();
+    let client = reqwest::blocking::Client::builder()
+        .use_rustls_tls()
+        .timeout(Duration::from_secs(300))
+        .build()
+        .unwrap();
+    let response = client
+        .post(uri)
+        .header(CONTENT_TYPE, "application/sparql-results+json")
+        .query(&[
+            ("query", context.query.lines().join("\n")),
+            ("format", "application/sparql-results+json".into()),
+        ])
+        .send()
+        .unwrap();
+    //dbg!(response.text().unwrap());
+    let result: SparqlResponse = response.json().unwrap();
+    context.output = Some(result);
+    context.mode = None;
+    context.pos_cursor = (0, 0);
 }

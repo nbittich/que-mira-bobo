@@ -1,16 +1,19 @@
-use std::collections::{BTreeMap, HashMap};
+use std::{
+    collections::{BTreeMap, HashMap},
+    result,
+};
 
 use tui::{
     backend::Backend,
     layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
     style::{Color, Modifier, Style},
-    text::{Span, Spans},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
+    text::{Span, Spans, Text},
+    widgets::{Block, Borders, Cell, List, ListItem, Paragraph, Row, Table, Wrap},
     Frame,
 };
 use tui_textarea::TextArea;
 
-use crate::sparql_context::{self, Mode, SparqlContext};
+use crate::sparql_context::{self, Mode, SparqlContext, SparqlResponse, SparqlResult};
 
 pub fn draw_app<B: Backend>(frame: &mut Frame<B>, context: &mut SparqlContext) {
     let frame_size = frame.size();
@@ -25,17 +28,10 @@ pub fn draw_app<B: Backend>(frame: &mut Frame<B>, context: &mut SparqlContext) {
             ]
             .as_ref(),
         )
-        .split(frame_size.clone());
-    let area_middle = split_rect(70, 30, Direction::Horizontal, chunks[1]);
-
-    let area_right = split_rect(50, 50, Direction::Vertical, area_middle[1]);
+        .split(frame_size);
+    let area_middle = split_rect(92, 8, Direction::Vertical, chunks[1]);
 
     let sparql_fragment = chunks[0];
-
-    let query_fragment = area_middle[0];
-
-    let prefixes_fragment = area_right[0];
-    let saved_queries_fragement = area_right[1];
 
     let focus = cursor_focused(frame, context, Mode::Url, &sparql_fragment);
 
@@ -46,35 +42,68 @@ pub fn draw_app<B: Backend>(frame: &mut Frame<B>, context: &mut SparqlContext) {
     );
 
     frame.render_widget(context.url.widget(), sparql_fragment);
-    let focus = cursor_focused(frame, context, Mode::Query, &query_fragment);
+    let focus = cursor_focused(frame, context, Mode::Query, &area_middle[0]);
+
     draw_textarea(&mut context.query, draw_block("Query", focus), focus);
 
-    frame.render_widget(context.query.widget(), query_fragment);
+    frame.render_widget(context.query.widget(), area_middle[0]);
 
-    let focus = cursor_focused(frame, context, Mode::SavedPrefixes, &prefixes_fragment);
-    let prefixes_list = draw_list(&context.prefixes, draw_block("Prefixes", focus), focus);
+    // BUTTON
+    let button_chunk = split_rect(90, 10, Direction::Horizontal, area_middle[1])[1];
+    let focus = cursor_focused(frame, context, Mode::Submit, &button_chunk);
+    let paragraph = draw_paragraph("SUBMIT", draw_block("", focus), focus);
+    frame.render_widget(paragraph, button_chunk);
 
-    frame.render_widget(prefixes_list, prefixes_fragment);
+    // OUTPUT
+    let focus = cursor_focused(frame, context, Mode::Output, &chunks[2]);
+    if let Some(response) = &context.output {
+        let headers = &response.head.vars;
+        let selected_style = Style::default().add_modifier(Modifier::REVERSED);
+        let normal_style = Style::default().bg(Color::Blue);
+        let header_cells = headers
+            .iter()
+            .map(|h| Cell::from(h.clone()).style(Style::default().fg(Color::Red)));
+        let header = Row::new(header_cells)
+            .style(normal_style)
+            .height(1)
+            .bottom_margin(1);
+        let rows = response.results.bindings.iter().map(|item| {
+            let height = item
+                .values()
+                .map(|content| content.value.chars().filter(|c| *c == '\n').count())
+                .max()
+                .unwrap_or(0)
+                + 1;
+            let mut cells = vec![];
+            for h in headers {
+                cells.push(Text::from(
+                    item.get(h)
+                        .map(|i| i.value.clone())
+                        .unwrap_or_else(String::new),
+                ));
+            }
+            Row::new(cells).height(height as u16).bottom_margin(1)
+        });
+        let widths_cons: Vec<Constraint> = headers
+            .iter()
+            .map(|_| Constraint::Percentage(100u16 / (headers.len() as u16)))
+            .collect();
+        let table = Table::new(rows)
+            .header(header)
+            .block(draw_block("Response", focus))
+            .highlight_style(selected_style)
+            .highlight_symbol(">> ")
+            .widths(widths_cons.as_slice());
 
-    let focus = cursor_focused(frame, context, Mode::SavedQueries, &saved_queries_fragement);
-    let query_list = draw_list(&context.saved_queries, draw_block("Queries", focus), focus);
-
-    frame.render_widget(query_list, saved_queries_fragement);
-
-    // DEBUG
-    let message = format!(
-        r#"
-          sparql_endpoint: {:?}
-          query: {:?}
-          prefixes: {:?}
-          queries: {:?}
-
-        "#,
-        chunks[0], query_fragment, prefixes_fragment, saved_queries_fragement
-    );
-    let debug = draw_paragraph(&message, draw_block("DEBUG", false), false);
-    frame.render_widget(debug, chunks[2]);
+        frame.render_stateful_widget(table, chunks[2], &mut context.output_state);
+    } else {
+        frame.render_widget(draw_block("Response", false), chunks[2]);
+    }
+    //let message = format!("{:?}", context.output);
+    //let debug = draw_paragraph(&message, draw_block("DEBUG", false), false);
+    //frame.render_widget(debug, chunks[2]);
 }
+
 fn draw_textarea<'a>(textarea: &mut TextArea<'a>, block: Block<'a>, focus: bool) {
     textarea.set_block(block);
     if !focus {
