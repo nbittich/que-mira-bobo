@@ -78,7 +78,17 @@ pub fn draw_app<B: Backend>(frame: &mut Frame<B>, context: &mut SparqlContext) {
             for h in headers {
                 cells.push(Text::from(
                     item.get(h)
-                        .map(|i| i.value.clone())
+                        .map(|i| {
+                            if let Some((k, v)) = context
+                                .prefixes
+                                .iter()
+                                .find(|(k, v)| i.value.contains(v.as_str()))
+                            {
+                                i.value.replace(v, &format!("{k}:"))
+                            } else {
+                                i.value.clone()
+                            }
+                        })
                         .unwrap_or_else(String::new),
                 ));
             }

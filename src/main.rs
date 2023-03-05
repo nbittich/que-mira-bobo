@@ -15,7 +15,12 @@ use crossterm::{
 };
 use reqwest::{blocking, header::CONTENT_TYPE};
 use sparql_context::{Mode, SparqlContext, SparqlResponse};
-use std::{collections::BTreeMap, error::Error, io, time::Duration};
+use std::{
+    collections::{BTreeMap, HashMap},
+    error::Error,
+    io,
+    time::Duration,
+};
 use tui::{
     backend::{Backend, CrosstermBackend},
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -88,6 +93,13 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<()> {
                     let textarea = &mut sparql_context.query;
                     textarea.input(key);
                 }
+                if matches!(sparql_context.mode, Some(Mode::Output)) {
+                    match key.code {
+                        KeyCode::Down => sparql_context.next_line_output(),
+                        KeyCode::Up => sparql_context.previous_line_output(),
+                        _ => {}
+                    }
+                }
             }
             Event::Mouse(m) => match m.kind {
                 event::MouseEventKind::Down(event::MouseButton::Left) => {
@@ -113,6 +125,37 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<()> {
 fn mock_initial_sparql_context<'a>() -> SparqlContext<'a> {
     SparqlContext::<'_> {
         url: TextArea::from(["http://localhost:8890/sparql"]),
+        prefixes: HashMap::from([
+            ("ext".into(), "http://mu.semte.ch/vocabularies/ext/".into()),
+            ("person".into(), "http://www.w3.org/ns/person#".into()),
+            ("locn".into(), "http://www.w3.org/ns/locn#".into()),
+            (
+                "session".into(),
+                "http://mu.semte.ch/vocabularies/session/".into(),
+            ),
+            ("foaf".into(), "http://xmlns.com/foaf/0.1/".into()),
+            (
+                "besluit".into(),
+                "http://data.vlaanderen.be/ns/besluit#".into(),
+            ),
+            (
+                "ere".into(),
+                "http://data.lblod.info/vocabularies/erediensten/".into(),
+            ),
+            (
+                "mandaat".into(),
+                "http://data.vlaanderen.be/ns/mandaat#".into(),
+            ),
+            ("org".into(), "http://www.w3.org/ns/org#".into()),
+            (
+                "generiek".into(),
+                "https://data.vlaanderen.be/ns/generiek#".into(),
+            ),
+            (
+                "rdf".into(),
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#".into(),
+            ),
+        ]),
         query: TextArea::from(
             r#"PREFIX ext: <http://mu.semte.ch/vocabularies/ext/>
       PREFIX person: <http://www.w3.org/ns/person#>

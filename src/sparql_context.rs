@@ -23,6 +23,7 @@ pub struct SparqlContext<'a> {
     pub mode: Option<Mode>,
     pub output_state: TableState,
     pub pos_cursor: (u16, u16),
+    pub prefixes: HashMap<String, String>,
 }
 
 impl SparqlContext<'_> {
