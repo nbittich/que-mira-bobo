@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeMap, HashMap},
-    result,
+    result, usize,
 };
 
 use tui::{
@@ -67,37 +67,48 @@ pub fn draw_app<B: Backend>(frame: &mut Frame<B>, context: &mut SparqlContext) {
             .style(normal_style)
             .height(1)
             .bottom_margin(1);
+        let screen_width = frame.size().width;
+        let cell_constraint = Constraint::Percentage(100u16 / (headers.len() as u16));
+
+        let actual_cell_len = cell_constraint.apply(screen_width) as usize;
+
+        let widths_cons: Vec<Constraint> = headers.iter().map(|_| cell_constraint).collect();
         let rows = response.results.bindings.iter().map(|item| {
-            let height = item
-                .values()
-                .map(|content| content.value.chars().filter(|c| *c == '\n').count())
+            let mut cells = vec![];
+            let mut max_height = 0;
+            for h in headers {
+                let item = item
+                    .get(h)
+                    .map(|i| {
+                        if let Some((k, v)) = context
+                            .prefixes
+                            .iter()
+                            .find(|(k, v)| i.value.contains(v.as_str()))
+                        {
+                            i.value.replace(v, &format!("{k}:"))
+                        } else {
+                            i.value.clone()
+                        }
+                    })
+                    .map(|mut v| {
+                        if v.len() > actual_cell_len {
+                            v.insert(actual_cell_len, '\n');
+                            v
+                        } else {
+                            v
+                        }
+                    })
+                    .unwrap_or_else(String::new);
+                cells.push(Text::from(item));
+            }
+            let height = cells
+                .iter()
+                .map(|content| content.lines.len())
                 .max()
                 .unwrap_or(0)
                 + 1;
-            let mut cells = vec![];
-            for h in headers {
-                cells.push(Text::from(
-                    item.get(h)
-                        .map(|i| {
-                            if let Some((k, v)) = context
-                                .prefixes
-                                .iter()
-                                .find(|(k, v)| i.value.contains(v.as_str()))
-                            {
-                                i.value.replace(v, &format!("{k}:"))
-                            } else {
-                                i.value.clone()
-                            }
-                        })
-                        .unwrap_or_else(String::new),
-                ));
-            }
             Row::new(cells).height(height as u16).bottom_margin(1)
         });
-        let widths_cons: Vec<Constraint> = headers
-            .iter()
-            .map(|_| Constraint::Percentage(100u16 / (headers.len() as u16)))
-            .collect();
         let table = Table::new(rows)
             .header(header)
             .block(draw_block("Response", focus))
