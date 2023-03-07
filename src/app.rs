@@ -92,8 +92,18 @@ pub fn draw_app<B: Backend>(frame: &mut Frame<B>, context: &mut SparqlContext) {
                     })
                     .map(|mut v| {
                         if v.len() > actual_cell_len {
-                            v.insert(actual_cell_len, '\n');
-                            v
+                            v.chars()
+                                .enumerate()
+                                .flat_map(|(i, c)| {
+                                    if i != 0 && i % actual_cell_len == 0 {
+                                        Some('\n')
+                                    } else {
+                                        None
+                                    }
+                                    .into_iter()
+                                    .chain(std::iter::once(c))
+                                })
+                                .collect::<String>()
                         } else {
                             v
                         }
