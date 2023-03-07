@@ -95,14 +95,12 @@ pub fn draw_app<B: Backend>(frame: &mut Frame<B>, context: &mut SparqlContext) {
                             // line breaks
                             v.chars()
                                 .enumerate()
-                                .flat_map(|(i, c)| {
+                                .map(|(i, c)| {
                                     if i != 0 && i % actual_cell_len == 0 {
-                                        Some('\n')
+                                        '\n'
                                     } else {
-                                        None
+                                        c
                                     }
-                                    .into_iter()
-                                    .chain(std::iter::once(c))
                                 })
                                 .collect::<String>()
                         } else {
