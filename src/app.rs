@@ -90,8 +90,9 @@ pub fn draw_app<B: Backend>(frame: &mut Frame<B>, context: &mut SparqlContext) {
                             i.value.clone()
                         }
                     })
-                    .map(|mut v| {
+                    .map(|v| {
                         if v.len() > actual_cell_len {
+                            // line breaks
                             v.chars()
                                 .enumerate()
                                 .flat_map(|(i, c)| {
